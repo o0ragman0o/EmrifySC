@@ -261,7 +261,7 @@ Imports library.sol ERC20.sol Holder.sol
 - [x] `function distributeTokens` implement boolean return value. Fixed in 2137139
 - [x] `function SaleDistribution` Use `camelCase` for function identifiers to prevent confusion with events. Fixed in 2137139
 - [x] `function SaleDistribution` Implement success testing for external calls to contracts. Fixed in 2137139
-    - [ ]  Declare and implement a boolean return value.
+    - [x]  Declare and implement a boolean return value.
 - [x] `function SaleDistributionMultiAddress` Use `camelCase` for function identifiers to prevent confusion with events. Fixed in 2137139
 - [x] `function BatchTransfer` Impliment success testing for external calls to contracts. Fixed in 2137139
 - [x] `function BatchTransfer` Use `camelCase` for function identifiers to prevent confusion with events. Fixed in 2137139
