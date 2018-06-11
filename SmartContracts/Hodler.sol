@@ -18,7 +18,7 @@ contract Hodler is Ownable {
     struct HODL {
         uint256 stake;
         // moving ANY funds invalidates hodling of the address
-        bool invalid;
+        bool isValid;
         bool claimed3M;
         bool claimed6M;
         bool claimed9M;
@@ -105,7 +105,7 @@ contract Hodler is Ownable {
     function addHodlerStake(address _beneficiary, uint256 _stake) public onlyAccessContract beforeHodlStart returns (bool) {
         // real change and valid _beneficiary is needed
         if (_stake == 0 || _beneficiary == address(0))
-            return;
+            return false;
         
         // add stake and maintain count
         if (hodlerStakes[_beneficiary].stake == 0)
@@ -113,6 +113,8 @@ contract Hodler is Ownable {
 
         hodlerStakes[_beneficiary].stake = hodlerStakes[_beneficiary].stake.add(_stake);
         hodlerTotalValue = hodlerTotalValue.add(_stake);
+        hodlerStakes[_beneficiary].isValid = true;
+
         emit LogHodlSetStake(msg.sender, _beneficiary, hodlerStakes[_beneficiary].stake);
         return true;
     }
@@ -136,10 +138,11 @@ contract Hodler is Ownable {
     invalidated or not participated stake holder in Pre-ico
     */ 
     function invalidate(address _account) public onlyTokenContract returns (bool) {
-        if (hodlerStakes[_account].stake > 0 && !hodlerStakes[_account].invalid) {
-            hodlerStakes[_account].invalid = true;
+        if (hodlerStakes[_account].stake > 0 && hodlerStakes[_account].isValid) {
+            hodlerStakes[_account].isValid = false;
             hodlerTotalValue = hodlerTotalValue.sub(hodlerStakes[_account].stake);
             hodlerTotalCount = hodlerTotalCount.sub(1);
+            delete hodlerStakes[_account];
             return true;
         }
         return false;
@@ -147,7 +150,7 @@ contract Hodler is Ownable {
 
     // We are checking whether an address have participated in pre-ico.	
     function checkStakeValidation(address _account) view public returns (bool) {
-        if (hodlerStakes[_account].stake > 0 && !hodlerStakes[_account].invalid) {
+        if (hodlerStakes[_account].stake > 0 && hodlerStakes[_account].isValid) {
             return true;
         }
         return false;
@@ -155,14 +158,14 @@ contract Hodler is Ownable {
 
     // Claiming HODL reward for msg.sender
     function claimHodlReward() public returns (bool) {
-        require(claimHodlRewardFor(msg.sender));
+        require( claimHodlRewardFor(msg.sender) ) ;
         return true;
     }
 
     // Claiming HODL reward for an address
     function claimHodlRewardFor(address _beneficiary) public returns (bool) {
         // only when the address has a valid stake
-        require(hodlerStakes[_beneficiary].stake > 0 && !hodlerStakes[_beneficiary].invalid);
+        require(hodlerStakes[_beneficiary].stake > 0 && hodlerStakes[_beneficiary].isValid);
         uint256 _stake = 0;
         
         // claim hodl if not claimed
@@ -220,14 +223,12 @@ contract Hodler is Ownable {
     */
     function claimHodlRewardsForMultipleAddresses(address[] _beneficiaries) external returns (bool) {
         for (uint256 i = 0; i < _beneficiaries.length; i++) {
+	    HODL memory hodler = hodlerStakes[_beneficiaries[i]]; 
             if((
-            !hodlerStakes[_beneficiaries[i]].claimed3M ||
-            !hodlerStakes[_beneficiaries[i]].claimed6M ||
-            !hodlerStakes[_beneficiaries[i]].claimed9M ||
-            !hodlerStakes[_beneficiaries[i]].claimed12M) &&
-            hodlerStakes[_beneficiaries[i]].stake > 0 &&
-            !hodlerStakes[_beneficiaries[i]].invalid) {
-                require(claimHodlRewardFor(_beneficiaries[i]));
+                !hodler.claimed3M || !hodler.claimed6M ||
+                !hodler.claimed9M || !hodler.claimed12M) &&
+                hodler.stake > 0 && hodler.isValid) {
+                    require(claimHodlRewardFor(_beneficiaries[i]));
             }
         }
         return true;

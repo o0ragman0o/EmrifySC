@@ -29,7 +29,7 @@ contract TimeLock {
     Before calling this method, admin should give allowance to this contract from the HIT ERC20 token balance.
     It takes beneficiary, releaseTime, and amount as inputs.
     */
-    function LockTokens(address _beneficiary,uint64 _releaseTime,uint256 _amount)  public  {    
+    function LockTokens(address _beneficiary,uint64 _releaseTime,uint256 _amount) public returns (bool) {    
         require(msg.sender==admin);
         require(_releaseTime > 0);
         require(releaseTime==0);
@@ -37,6 +37,7 @@ contract TimeLock {
         beneficiary = _beneficiary;
         releaseTime = _releaseTime+uint64(block.timestamp);
         require(tokenContract.transferFrom(msg.sender, address(this), _amount));
+        return true;
     }
     
     /*

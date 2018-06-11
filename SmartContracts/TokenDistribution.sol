@@ -12,9 +12,12 @@ This contract will be deployed by a HIT team admin, and can only be accessed by 
 
 
 contract TokenDistribution is Ownable {    
-    ERC20  public  constant tokenContract = ERC20(0x1233);       // Our ERC20 token contract, correct address will be added during the time of deployment.
+    ERC20  public  constant tokenContract = ERC20(0x1233);       // Our HIT token contract, correct address will be added during the time of deployment.
     Hodler public  constant hodlerContract = Hodler(0x123);      // Holder contract, correct address will be added during the time of deployment;
    
+    // To figure out the addresses on which the token distribution was not successful.
+    event TokenDistributionAddressNotCorrect(address _userAddress, uint256 _value, uint256 _timeStamp);
+
     // Internal method to transfer the tokens to a user address. 
     function distributeTokens(address _beneficiaryAddress,uint256 _amount) internal returns (bool) {
         require(tokenContract.transfer(_beneficiaryAddress,_amount));
@@ -36,7 +39,13 @@ contract TokenDistribution is Ownable {
         
         for(uint i=0;i<_addresses.length;i++)
         {
-            saleDistribution(_addresses[i],_values[i]);
+            if(_addresses[i]!=address(0)&&_addresses[i]!=owner) {
+                saleDistribution(_addresses[i],_values[i]);
+            }
+            else {
+                emit TokenDistributionAddressNotCorrect(_addresses[i], _values[i], block.timestamp);
+            }
+            
         }
         return true;
     }
@@ -48,9 +57,12 @@ contract TokenDistribution is Ownable {
         
         for(uint i=0;i<_addresses.length;i++){
             
-            require(_addresses[i]!=address(0)&&_addresses[i]!=owner);
-         
-            require(distributeTokens(_addresses[i],_values[i]));
+            if(_addresses[i]!=address(0)&&_addresses[i]!=owner) {
+                require(distributeTokens(_addresses[i],_values[i]));
+            }
+            else {
+                emit TokenDistributionAddressNotCorrect(_addresses[i], _values[i], block.timestamp);
+            }
         }
         return true;
     }
