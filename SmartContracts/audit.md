@@ -22,6 +22,7 @@ Commit: `2137139`
 
 Third review
 
+
 Preliminary notes:
 
 - [x] contract set cannot compile due to missing `library.sol` and incorrect import chains. Fixed in 240e10d
@@ -34,6 +35,13 @@ Fourth Review- Commit `8c83351`
 - [x] import paths have been changed to `browser/` for unknown. No such path exists in the repo and contracts cannot compile. Revert to `./` import path.  Fixed in 588f42c.
 
 Fifth Review - Commit: `588f42c`
+
+Sixth Review - Commit `0d0e88c`
+
+Fixes from prior reviews have now allowed for a deeper architectural review. An inordinate number of potential failure vectors and manual deploy requirments have been noted. A significant refactor is required to greatly simplify the contracts and contract set. HITAirDrop and TokenDistribution can be dropped completely and Hodler can be deployed by HIT. This requires integrating a bulk transfer function and token/state distribution function into the HIT contract. The Timelock contract can be dropped and replaced by a simple lock mapping, function and test in the HIT contract. Hodler itself has broken maths, unused state declaration, unnecessary state declaration, an overly complex reward calculation and requires more consideration around finalizing the contract.
+
+It must be noted that even with the required refactoring, the contract set still cannot pass audit as it does not present a trustless architecture as the holders are entirely dependant upon the owners deploying the contracts correctly and manually distribute the correct value of tokens for each holder
+
 
 ## Library.sol
 compiler is set to solidity 0.4.23
@@ -51,6 +59,10 @@ and `acceptOwnership()` to prove that the recipient can control the contract. At
 - [x] *BUG introduced in 2137139 `owner = newOwner;` should be `tempOwner = newOwner;`. Fixed in  8c83351
 - [x] Declare tempOwner as `public` in order to be verified for claiming ownership. Fixed in  8c83351
 
+Review 6 `0d0e88c`
+ -[x] All tests passed
+
+**Passed audit**
 
 #### library SafeMath
 
@@ -75,6 +87,11 @@ e.g.
 ```
 Project has elected to keep using `SafeMath40` library
 
+Review 6 `0d0e88c`
+ -[x] All tests passed
+
+**Passed audit**
+
 
 ## ERC20.sol
 - [x] Compiler is set to ^0.4.18.  Fix in 2137139 set to 0.4.18
@@ -82,13 +99,15 @@ Project has elected to keep using `SafeMath40` library
 ### Contracts
 #### contract ERC20
 
-- [ ] Contract does not contain all state variable defined in ERC20 but contains only `totalSupply`.
-- [ ] `totalSupply` typed as `uint` alias. Redeclare `totalSupply` as abstract getter instead of a state variable.
+- [x] Contract does not contain all state variable defined in ERC20 but contains only `totalSupply`. redeclared `interface` in `0d0e88c`
+- [x] `totalSupply` typed as `uint` alias. Redeclare `totalSupply` as abstract getter instead of a state variable. Almost fixed in `0d0e88c`
 The contract is written in abstract should should declare the `totalSupply()`
 getter abstract instead of declare a state variable. The contract can then be declared as an `interface ERC20Interface`
-- [x] Use of `constant` for functions is depreciated replace `constant` with `view`. Fixed in 2137139
-for functions referencing state variables
+- [x] Use of `constant` for functions is depreciated replace `constant` with `view`. 
+for functions referencing state variables. Fixed in 2137139
 
+review 6
+- [ ] `totalSupply` has been redeclared as abstract function and contract declared as interface, however an uneccessarily and what I thought to be an improperly named return parameter `totalSupply` has been introduced and shaddows the function of the same name. This practice causes compiler warnings and breaks standard calling conventions by preventing the oppertunity for recursive calling. However, in reviewing the [standard ERC20 document](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-20.md), it's noted that they also use shadow declarations for named return parameters.  As it's improper (in the least) to have a 'standard' which causes compiler warnings, an issue has been raised against the standard itself. For the purpose of these contracts, there is no real issue raised however it is suggested that the naming of the return parameter be removed or changed to supress the compiler warning.
 
 
 ## Holder.sol
@@ -100,6 +119,7 @@ Imports library.sol ERC20.sol
 
 - [x] Commit 8c83351 has introduced incorrect import paths as `browser/`. FIxed in 588f42c
 
+
 ### Contracts
 #### contract Hodler is Ownable
 - [x] All functions should return a value. Functions that are called by an external
@@ -110,6 +130,18 @@ Severity: high. Contracts may not behave as expected if testing return values of
 - [x] Storage costs for time variables (hodlerTimeStart, hodlerTime3M, ...) can be declared `uint40` to pack all six variable in one storage slot.   Fixed in 2137139
 - [x] Declare `ERC20 tokenContract;` as public. Fixed in  8c83351
 
+Sixth Review
+- [ ] Refactor the contract to be deployed and owned by HIT 
+    - [ ] Redundant state variable. `address HITTokenContract` and `ERC20 public tokenContract` are set once to the same address. `HITTokenContract` is used only in a modifier. Remove `HITTokenContract` and use `address(tokenContract)` casting in modifier `onlyTokenContract` instead.
+    - [ ] `tokenDistributionContract` no longer required once token distribution is written into the HIT contract.
+    - [ ] `onlyAccessContract` modifier no longer needed
+    - [ ] constructor to take single argument for pool tokens
+    - [ ] timed pools (` TOKEN_HODL_3M`, ...) to be calculated accordingly
+    - [ ] remove `hodlerTime3M`, etc state variable and calculate dynamically from `hodlerTimeStart`
+    - [ ] remove unuse state declarations `hodlerTotalValue3M`...
+    - [ ] remove `_setter` parameter from events as it doesn't provide useful information
+
+
 `function setContractAddresses`
 
 - [x] Allows the owner to change the referenced contracts at any time which introduces a point of *trust*. Fixed in 2137139
@@ -117,10 +149,17 @@ Require that one of the contract addresses 0x0 before setting.
 - [ ] Require that passed parameters are valid contracts.
 - [x] Function does not declare a return value
 
+Review 6
+- [ ] Refactoring for the removal of redundant `TokenDIstribution` and `HITAirDrop` contracts, this function can be removed.
+
 `function addHodlerStake`
 
 - [x] Declare and implement boolean return values for the calling contract to test. Fixed in 2137139
 - [x] Use `emit` keyword for event invocation. Fixed in 2137139
+
+Review 6
+- [ ] Change modifier to `onlyTokenContract()`
+
 
 `function setHodlerTime`
 
@@ -134,6 +173,15 @@ Require that one of the contract addresses 0x0 before setting.
 - [ ] Garbage collect `hodlerStakes- [_account].stake`
 - [x] **BUG** `delete hodlerStakes[_account]` New garbage collection code introduced in 8c83351 for above issue breaks invalidation testing of the staker. The invalid flag design is using logic that is unnecessarily inverted. Project has removed buggy garbage collection instead of repatterned code to use positive logic to address the garbage collection issue
 
+Review 6
+- [ ] Invalidate to simply delete account from mapping
+- [ ] Remove `hodlerTotalValue = hodlerTotalValue.sub(hodlerStakes[_account].stake);` as it breaks reward maths
+
+`function checkStakeValidation(address _account) view public returns (bool)`
+- [ ] better name would be `isValid(address _account)`
+- [ ] should simply return true if account stake is > 0
+
+
 `function claimHodlReward`
 
 - [ ] Declare and implement boolean return values for the calling contract to test. Buggy fix in 8c83351
@@ -144,10 +192,19 @@ Require that one of the contract addresses 0x0 before setting.
 - [x] Declare and implement boolean return values for the calling contract to test.
 - [x] Use `emit` keyword for event invocation.  Fixed in 2137139
 
+Review 6
+- [ ] can be greatly simplified by refactoring `struct HODL` to use `lastClaimed` time instead of bool flags.
+- [ ] calculate `hodlerTime3M`,... dynamically against `hodlerTimeStart` rather than using state variables
+- [ ] remove core calculation to its own internal function
+- [ ] *BUG* maths is broken by change to `hodlerTotalValue` in function `invalidate()`. Two holders of equal stake will recieve different rewards if a third staker invaidates.
+
 `function finalizeHodler`
 
 - [x] Declare and implement boolean return values for the calling contract to test.  Fixed in 2137139
 - [x] Use `require` instead of `assert` for testing success of code execution. (`assert` boolean expressions should only be referencing data not changing it)  Fixed in 2137139
+
+Review 6
+- [ ] *BUG* function does not test for unclaimed rewards and can completely wipe unclaimed rewards after 12 months
 
 `function claimHodlRewardsForMultipleAddresses`
 
@@ -159,6 +216,8 @@ if a hodler has already claimed. Change `claimHodlRewardFor()` to non-blocking o
 HODL memory hodler = hodlerStakes(_beneficiaries[i]);
 ```
 
+Review 6
+- [ ] function can be greatly simplified if `struct HODL` is refactored to use a last claim time rather than bool flags
 
 ## ERC20HIT.sol
 Compiler set to Solidity 0.4.23
@@ -171,7 +230,7 @@ Compiler set to Solidity 0.4.23
 - [x] No state declarations so contract can be declared as `interface`.  Fixed in 2137139
 - [x] Use of `constant` for functions is depreciated replace `constant` with `view`.  Fixed in 2137139
 - [x] Note: `internal` functions cannot be declared in an interface as they cannot be interfaced by an external caller.  Fixed in 2137139
-- [ ] This contract is redundant once the ERC20 interface contract is properly declared and inherited instead. Remove and use the standard ERC20 interface contract from ERC20.sol
+- [x] This contract is redundant once the ERC20 interface contract is properly declared and inherited instead. Remove and use the standard ERC20 interface contract from ERC20.sol. Fixed in `0d0e88c`
 
 #### contract HIT is TokenInterface, Ownable
 
@@ -200,6 +259,10 @@ Project has elected to mitigate risk by raising awareness in their community of 
 
 - [ ] Import ERC20.sol and inherit from ERC20 interface contract instead
 
+Sixth Review
+- [ ] Include a bulk transfer function and stake initialization function to allow removal of redundant contracts `tokenDistribution` and `HITAirDrop`
+- [ ]
+
 ## HITAirdop.sol
 Compiler set to Solidity 0.4.23
 
@@ -222,6 +285,8 @@ imports library.sol and ERC20.sol
     - [ ] *BUG* Function does not return a value and defaults to `return false` which will force functions `AirDropTokens` and `AirdropMultiValues` to throw.
 - [ ] Inconsistent camelCase for `AirDropTokens` and `AirdropMultiValues`
     
+Sixth Review
+- [ ] This contract is found to be entirely redundant.  Remove and incorporate the bulk transfer function into the HIT contract
 
 
 ## TimeLock.sol
@@ -244,6 +309,8 @@ NOTE: This contract is not referenced by any other contracts in the set. It's pu
     - [x]  Declare and implement a boolean return value. Fixed in 2137139
 - [x] Fix invalid import paths introduced in 2137139.  Fixed in 588f42c.
 
+Sixth Review
+- [ ] This contract can be replaced by a lock mapping in the `HIT` contract along with a locking function and lock test in the transfer function
 
 
 ## TokenDistribution.sol
@@ -266,4 +333,7 @@ Imports library.sol ERC20.sol Holder.sol
 - [x] `function BatchTransfer` Impliment success testing for external calls to contracts. Fixed in 2137139
 - [x] `function BatchTransfer` Use `camelCase` for function identifiers to prevent confusion with events. Fixed in 2137139
 - [x] Fix invalid import paths introduced in 2137139.  Fixed in 588f42c.
+
+Sixth review
+- [ ] The only unique functionality of this contract is the external call to `hodlerContract.addHodlerStake(_beneficiaryAddress,_amount)`. The entire contract can be considered redundant if the bulk transfer function is incorportate into t `HIT` contract along with the addtion of the `saleDistributionMultiAddress()` function which initiates hodler staking
 
