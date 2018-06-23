@@ -20,24 +20,35 @@ contract HIT is ERC20,Ownable {
     uint256 private constant totalSupply1 = 1000000000 * 10 ** uint256(decimals);
     mapping (address => uint256)  balances;
     mapping (address => mapping (address => uint256))  allowed;
+    mapping (address => uint64) lockTimes;
+    uint64 public constant tokenLockTime = 31556926;
     Hodler public hodlerContract;
+    
+    // To figure out the addresses on which the airdrop was not successful.
+    event AirDropAddressNotCorrect(address _userAddress, uint256 _value, uint256 _timeStamp);
+    
+    // To figure out the addresses on which the token distribution was not successful.
+    event TokenDistributionAddressNotCorrect(address _userAddress, uint256 _value, uint256 _timeStamp);
 
     // The constructor method which will initialize the token supply.	    
     constructor() public {
         emit Transfer(0x0,msg.sender,totalSupply1);
-        balances[msg.sender] = totalSupply1;	
+        balances[msg.sender] = totalSupply1;
+        //Exact value need to be udpated during the time of deployement
+        hodlerContract = new Hodler(9999); 
     }
+    
 
     // Constant function to return the total supply of the HIT contract
-    function totalSupply() public view returns(uint) {
+    function totalSupply() public view returns(uint256) {
         return totalSupply1;
     }
 
-    // To set the HODL contract address, This contract will notify HODL on token transfer. Check `transfer()` method
-    function setHolderContractAddress(address _holderContractAddress) public onlyOwner {
-        require(hodlerContract==address(0));
-        hodlerContract = Hodler(_holderContractAddress);
-    }
+    // // To set the HODL contract address, This contract will notify HODL on token transfer. Check `transfer()` method
+    // function setHolderContractAddress(address _holderContractAddress) public onlyOwner {
+    //     require(hodlerContract==address(0));
+    //     hodlerContract = Hodler(_holderContractAddress);
+    // }
 
     /* 
     Transfer amount from one account to another (may require approval). This function trigger the action to 
@@ -50,7 +61,7 @@ contract HIT is ERC20,Ownable {
         require(balances[_from] >= _value);
         balances[_from] = balances[_from].sub(_value);
         balances[_to] = balances[_to].add(_value);
-        if(hodlerContract.checkStakeValidation(_from)) {
+        if(hodlerContract.isValid(_from)) {
             require(hodlerContract.invalidate(_from));
         }
         emit Transfer(_from, _to, _value);
@@ -59,6 +70,7 @@ contract HIT is ERC20,Ownable {
 	
     // Standard token transfer method.
     function transfer(address _to, uint256 _value) public returns (bool) {
+        require(block.timestamp>lockTimes[msg.sender]);
         return _transfer(msg.sender, _to, _value);
     }
 
@@ -74,6 +86,7 @@ contract HIT is ERC20,Ownable {
 
     // Approve `_spender` to move `_value` tokens from owner's account
     function approve(address _spender, uint256 _value) public returns (bool) {
+        require(block.timestamp>lockTimes[msg.sender]);
         allowed[msg.sender][_spender] = _value;
         emit Approval(msg.sender, _spender, _value);
         return true;
@@ -88,5 +101,88 @@ contract HIT is ERC20,Ownable {
     function allowance(address _owner, address _spender) public view returns (uint256) {
         return allowed[_owner][_spender];
     }
+    
+    /*
+    Method to do the airdrop to multiple users with same value.
+    It requires addresses and their corresponding values. This is designed so that 
+    we can push in more addresses in a single function call.
+    */
+    function AirDropTokens(address[] _addresses,uint256 _value) public onlyOwner returns (bool) {    
+        require(_addresses.length>0);
+        for(uint i=0;i<_addresses.length;i++) {
+            if(_addresses[i]!=address(0)&&_addresses[i]!=owner) {
+                require(transfer(_addresses[i], _value));    
+            }
+            else {
+                emit AirDropAddressNotCorrect(_addresses[i], _value, block.timestamp);
+            }
+        }
+        return true;
+    }
+    
+    //This method can be used by the admin to allocate tokens to the presale users.
+    
+    function saleDistribution(address _beneficiaryAddress,uint256 _amount)  public onlyOwner returns (bool) {
+        
+        require(_beneficiaryAddress!=address(0)&&_beneficiaryAddress!=owner);
+        
+       
+        require(hodlerContract.addHodlerStake(_beneficiaryAddress,_amount));
+        
+        require(transfer(_beneficiaryAddress,_amount));
+        
+        return true;
+        
+    }
+    
+     // This method will be used by the admin to allocate tokens to multiple presale users at a single shot.
+    function saleDistributionMultiAddress(address[] _addresses,uint256[] _values) public onlyOwner returns (bool) {    
+        require(_addresses.length>0);
+        require(_addresses.length == _values.length);
+        
+        for(uint i=0;i<_addresses.length;i++)
+        {
+            if(_addresses[i]!=address(0)&&_addresses[i]!=owner) {
+                require(saleDistribution(_addresses[i],_values[i]));
+            }
+            else {
+                emit TokenDistributionAddressNotCorrect(_addresses[i], _values[i], block.timestamp);
+            }
+            
+        }
+        return true;
+    }
+    
+    // This method will be used by the admin to send tokens to multiple addresses ins a single method.
+    function batchTransfer(address[] _addresses,uint256[] _values) public onlyOwner returns (bool) {    
+        require(_addresses.length>0);
+        require(_addresses.length==_values.length);
+        
+        for(uint i=0;i<_addresses.length;i++){
+            
+            if(_addresses[i]!=address(0)&&_addresses[i]!=owner) {
+                require(transfer(_addresses[i],_values[i]));
+            }
+            else {
+                emit TokenDistributionAddressNotCorrect(_addresses[i], _values[i], block.timestamp);
+            }
+        }
+        return true;
+    }
+    
+    //This method can be used by the Admin to set a token lock time for a particular address.
+    function setLockTime(address _memberAddress) public onlyOwner returns (bool) {
+        
+        require(lockTimes[_memberAddress]==0);
+        lockTimes[_memberAddress] = uint64(block.timestamp+tokenLockTime);
+        return true;
+    }
+    
+    function startHodler(uint40 _startTime) public onlyOwner returns (bool) {
+        
+        require(hodlerContract.setHodlerTime(_startTime));
+    }
+    
 }
+
 
